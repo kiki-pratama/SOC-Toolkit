@@ -1,6 +1,6 @@
 # 🛡️ SOC Analyst Toolkit (v3.0 Pro)
 
-**Internal Tool for Incident Response & Threat Hunting** *Developed by: SOC L2 Team | BWS Tech*
+**Internal Tool for Incident Response & Threat Hunting** *Developed by: SOC L2 Team*
 
 Aplikasi ini adalah dashboard investigasi keamanan siber berbasis Python yang dirancang untuk mempercepat proses triase (triage) insiden. Mengintegrasikan Threat Intelligence dari **AbuseIPDB** dan **VirusTotal** untuk analisis otomatis.
 
@@ -54,4 +54,5 @@ Pastikan komputer sudah terinstal:
 Untuk memulai aplikasi, jalankan perintah berikut di terminal:
 
 ```bash
+
 py -m streamlit run app.py
