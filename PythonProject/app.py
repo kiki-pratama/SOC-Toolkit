@@ -5,9 +5,18 @@ import time
 from datetime import datetime
 from fpdf import FPDF
 
-# --- KONFIGURASI API KEY ---
-ABUSEIPDB_API_KEY = '0187053bc80fccb9732d458707b670faa570cf31505b7053e7d7b4da940654113899ec767aa4b829'
-VIRUSTOTAL_API_KEY = '154df8bbcd4d2dd87179c5d48358f563a34bcc7e8dcc289f7dd064fa680a2665'
+import streamlit as st
+
+# --- KONFIGURASI API KEY (SECURE) ---
+# Kode ini akan mencari key di file secrets.toml (di laptop) 
+# ATAU di menu Secrets (kalau nanti di-upload ke Cloud)
+
+try:
+    ABUSEIPDB_API_KEY = st.secrets["ABUSEIPDB_API_KEY"]
+    VIRUSTOTAL_API_KEY = st.secrets["VIRUSTOTAL_API_KEY"]
+except FileNotFoundError:
+    st.error("File .streamlit/secrets.toml tidak ditemukan! Buat file tersebut untuk menyimpan API Key.")
+    st.stop()
 
 
 # --- CLASS PDF GENERATOR ---
@@ -114,9 +123,9 @@ def create_pdf(dataframe, mal, susp, clean):
 st.set_page_config(page_title="SOC L2 Dashboard", page_icon="🛡️", layout="wide")
 
 st.title("🛡️ SOC Analyst Toolkit (Pro Version)")
-st.markdown("Incident Response Dashboard | Caching Enabled | PDF Reporting")
+st.markdown("Incident Response Dashboard")
 
-tab1, tab2, tab3 = st.tabs(["🌐 Single IP", "🦠 Single Hash", "📊 Bulk Scan & Report"])
+tab1, tab2, tab3 = st.tabs(["🌐 Single IP", "🦠 Single Hash", "📊 Reporting"])
 
 # === TAB 1: SINGLE IP ===
 with tab1:
@@ -277,4 +286,5 @@ with tab3:
                     st.error(f"Gagal membuat PDF: {e}")
 
         else:
+
             st.warning("List IP kosong.")
