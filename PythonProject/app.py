@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 
@@ -19,6 +20,10 @@ st.set_page_config(
 
 ABUSEIPDB_API_KEY, VIRUSTOTAL_API_KEY = load_api_keys()
 
+
+# =========================
+# DATA BUILDERS
+# =========================
 
 def build_success_row(ip_address: str, data: dict) -> dict:
     score = int(data.get("abuseConfidenceScore", 0) or 0)
@@ -74,17 +79,205 @@ def build_error_row(ip_address: str, error_message: str) -> dict:
     }
 
 
+# =========================
+# STYLING
+# =========================
+
 def style_category(value: str) -> str:
     colors = {
-        "Malicious": "background-color: #ff4b4b; color: black",
-        "Suspicious": "background-color: #ffa500; color: black",
-        "Clean": "background-color: #90ee90; color: black",
-        "Invalid": "background-color: #d3d3d3; color: black",
-        "Error": "background-color: #d3d3d3; color: black",
+        "Malicious": "background-color: #ef4444; color: black",
+        "Suspicious": "background-color: #facc15; color: black",
+        "Clean": "background-color: #22c55e; color: black",
+        "Invalid": "background-color: #9ca3af; color: black",
+        "Error": "background-color: #6b7280; color: white",
     }
 
     return colors.get(value, "")
 
+
+# =========================
+# CHARTS
+# =========================
+
+def render_risk_distribution_chart(df: pd.DataFrame) -> None:
+    st.caption("Risk Distribution")
+
+    risk_order = [
+        "Malicious",
+        "Suspicious",
+        "Clean",
+        "Invalid",
+        "Error",
+    ]
+
+    category_counts = (
+        df["Category"]
+        .fillna("Unknown")
+        .value_counts()
+        .reindex(risk_order, fill_value=0)
+        .reset_index()
+    )
+
+    category_counts.columns = ["Category", "Count"]
+    category_counts = category_counts[category_counts["Count"] > 0]
+
+    if category_counts.empty:
+        st.info("Tidak ada risk data.")
+        return
+
+    chart = (
+        alt.Chart(category_counts)
+        .mark_bar(
+            cornerRadiusTopLeft=6,
+            cornerRadiusTopRight=6,
+        )
+        .encode(
+            x=alt.X(
+                "Category:N",
+                sort=risk_order,
+                title=None,
+                axis=alt.Axis(
+                    labelAngle=0,
+                    labelColor="#d1d5db",
+                    titleColor="#d1d5db",
+                ),
+            ),
+            y=alt.Y(
+                "Count:Q",
+                title="Count",
+                axis=alt.Axis(
+                    labelColor="#d1d5db",
+                    titleColor="#d1d5db",
+                    gridColor="#374151",
+                ),
+            ),
+            color=alt.Color(
+                "Category:N",
+                scale=alt.Scale(
+                    domain=[
+                        "Malicious",
+                        "Suspicious",
+                        "Clean",
+                        "Invalid",
+                        "Error",
+                    ],
+                    range=[
+                        "#ef4444",
+                        "#facc15",
+                        "#22c55e",
+                        "#9ca3af",
+                        "#6b7280",
+                    ],
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Category:N", title="Category"),
+                alt.Tooltip("Count:Q", title="Count"),
+            ],
+        )
+        .properties(
+            height=340,
+            background="transparent",
+        )
+        .configure_view(
+            strokeWidth=0,
+        )
+        .configure_axis(
+            domainColor="#4b5563",
+            tickColor="#4b5563",
+            labelFontSize=12,
+            titleFontSize=12,
+        )
+    )
+
+    st.altair_chart(chart, use_container_width=True, theme=None)
+
+
+def render_country_origin_chart(df: pd.DataFrame) -> None:
+    st.caption("Country Origin")
+
+    country_series = (
+        df["Country"]
+        .fillna("-")
+        .astype(str)
+        .str.strip()
+    )
+
+    country_counts = (
+        country_series[~country_series.isin(["-", "", "None", "nan"])]
+        .value_counts()
+        .head(10)
+        .reset_index()
+    )
+
+    country_counts.columns = ["Country", "Count"]
+
+    if country_counts.empty:
+        st.info("Tidak ada country data.")
+        return
+
+    chart = (
+        alt.Chart(country_counts)
+        .mark_bar(
+            cornerRadiusTopRight=6,
+            cornerRadiusBottomRight=6,
+        )
+        .encode(
+            y=alt.Y(
+                "Country:N",
+                sort="-x",
+                title=None,
+                axis=alt.Axis(
+                    labelColor="#d1d5db",
+                    titleColor="#d1d5db",
+                ),
+            ),
+            x=alt.X(
+                "Count:Q",
+                title="Count",
+                axis=alt.Axis(
+                    labelColor="#d1d5db",
+                    titleColor="#d1d5db",
+                    gridColor="#374151",
+                ),
+            ),
+            color=alt.Color(
+                "Count:Q",
+                scale=alt.Scale(
+                    range=[
+                        "#38bdf8",
+                        "#2563eb",
+                    ],
+                ),
+                legend=None,
+            ),
+            tooltip=[
+                alt.Tooltip("Country:N", title="Country"),
+                alt.Tooltip("Count:Q", title="Count"),
+            ],
+        )
+        .properties(
+            height=340,
+            background="transparent",
+        )
+        .configure_view(
+            strokeWidth=0,
+        )
+        .configure_axis(
+            domainColor="#4b5563",
+            tickColor="#4b5563",
+            labelFontSize=12,
+            titleFontSize=12,
+        )
+    )
+
+    st.altair_chart(chart, use_container_width=True, theme=None)
+
+
+# =========================
+# SIDEBAR
+# =========================
 
 def render_sidebar() -> None:
     with st.sidebar:
@@ -99,6 +292,10 @@ def render_sidebar() -> None:
         st.write("- AbuseIPDB")
         st.write("- VirusTotal")
 
+
+# =========================
+# SINGLE IP TAB
+# =========================
 
 def render_single_ip_tab() -> None:
     st.header("Single IP Investigation")
@@ -155,6 +352,10 @@ def render_single_ip_tab() -> None:
     with st.expander("Raw AbuseIPDB Response"):
         st.json(data)
 
+
+# =========================
+# SINGLE HASH TAB
+# =========================
 
 def render_single_hash_tab() -> None:
     st.header("Malware Hash Check")
@@ -218,6 +419,10 @@ def render_single_hash_tab() -> None:
         st.json(data)
 
 
+# =========================
+# BULK REPORTING TAB
+# =========================
+
 def render_bulk_tab() -> None:
     st.header("Bulk IP Analyzer & Reporting")
 
@@ -256,7 +461,13 @@ def render_bulk_tab() -> None:
         ip_address = target["ip"]
 
         if not target["valid"]:
-            results.append(build_invalid_row(ip_address, target["error"]))
+            results.append(
+                build_invalid_row(
+                    ip_address=ip_address,
+                    error_message=target["error"],
+                )
+            )
+
             progress.progress((index + 1) / len(targets))
             continue
 
@@ -268,9 +479,19 @@ def render_bulk_tab() -> None:
         )
 
         if result["ok"]:
-            results.append(build_success_row(ip_address, result["data"]))
+            results.append(
+                build_success_row(
+                    ip_address=ip_address,
+                    data=result["data"],
+                )
+            )
         else:
-            results.append(build_error_row(ip_address, result["error"]))
+            results.append(
+                build_error_row(
+                    ip_address=ip_address,
+                    error_message=result["error"],
+                )
+            )
 
         progress.progress((index + 1) / len(targets))
 
@@ -299,25 +520,29 @@ def render_bulk_tab() -> None:
     chart1, chart2 = st.columns(2)
 
     with chart1:
-        st.caption("Risk Distribution")
-        st.bar_chart(df["Category"].value_counts())
+        render_risk_distribution_chart(df)
 
     with chart2:
-        st.caption("Country Origin")
-        country_data = df[~df["Country"].isin(["-", "", None])]["Country"].value_counts()
-
-        if country_data.empty:
-            st.info("Tidak ada country data.")
-        else:
-            st.bar_chart(country_data)
+        render_country_origin_chart(df)
 
     st.subheader("Investigation Log")
 
     try:
-        styled_df = df.style.applymap(style_category, subset=["Category"])
-        st.dataframe(styled_df, use_container_width=True)
+        styled_df = df.style.applymap(
+            style_category,
+            subset=["Category"],
+        )
+
+        st.dataframe(
+            styled_df,
+            use_container_width=True,
+        )
+
     except Exception:
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(
+            df,
+            use_container_width=True,
+        )
 
     malicious_ips = df[df["Category"] == "Malicious"]["IP"].tolist()
 
@@ -372,6 +597,10 @@ def render_bulk_tab() -> None:
         except Exception as error:
             st.error(f"Gagal membuat PDF: {error}")
 
+
+# =========================
+# MAIN
+# =========================
 
 def main() -> None:
     st.title("🛡️ SOC Analyst Toolkit")
