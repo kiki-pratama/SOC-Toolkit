@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import streamlit as st
 
 
@@ -21,7 +23,7 @@ def load_secret(key_name: str) -> str:
         st.stop()
 
 
-def load_api_keys() -> tuple[str, str]:
+def load_api_keys() -> Tuple[str, str]:
     abuseipdb_api_key = load_secret("ABUSEIPDB_API_KEY")
     virustotal_api_key = load_secret("VIRUSTOTAL_API_KEY")
 
