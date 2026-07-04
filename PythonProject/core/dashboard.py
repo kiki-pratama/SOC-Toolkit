@@ -11,6 +11,7 @@ from core.charts import (
     render_top_isp_chart,
 )
 from core.config import APP_CONFIG
+from core.hunting import render_security_artifacts
 from core.report import create_pdf_report
 from core.risk import get_category, get_recommendation, get_severity
 from core.validators import parse_bulk_ips
