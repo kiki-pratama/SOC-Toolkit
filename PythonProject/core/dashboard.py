@@ -672,7 +672,7 @@ def render_bulk_dashboard(df: pd.DataFrame) -> None:
     malicious_ips = get_malicious_ips(filtered_df)
 
     render_blocklist(malicious_ips)
-    render_siem_queries(malicious_ips)
+    render_security_artifacts(malicious_ips)
     render_error_details(filtered_df)
     render_exports(filtered_df, counts)
 
