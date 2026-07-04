@@ -1,5 +1,5 @@
-def get_category(score: int) -> str:
-    if score >= 50:
+def get_category(score: int, malicious_threshold: int = 50) -> str:
+    if score >= malicious_threshold:
         return "Malicious"
 
     if score > 0:
@@ -8,8 +8,12 @@ def get_category(score: int) -> str:
     return "Clean"
 
 
-def get_severity(score: int, reports: int) -> str:
-    if score >= 75 or reports >= 50:
+def get_severity(
+    score: int,
+    reports: int,
+    high_severity_threshold: int = 75,
+) -> str:
+    if score >= high_severity_threshold or reports >= 50:
         return "High"
 
     if score >= 50:
