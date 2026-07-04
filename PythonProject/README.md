@@ -1,6 +1,6 @@
 # 🛡️ SOC Analyst Toolkit (v2.0 Pro)
 
-**Internal Tool for Incident Response & Threat Hunting** *Developed by: SOC L2*
+**Internal Tool for Incident Response & Threat Hunting** *Developed by: kiki*
 
 Aplikasi ini adalah dashboard investigasi keamanan siber berbasis Python yang dirancang untuk mempercepat proses triase (triage) insiden. Mengintegrasikan Threat Intelligence dari **AbuseIPDB** dan **VirusTotal** untuk analisis otomatis.
 
