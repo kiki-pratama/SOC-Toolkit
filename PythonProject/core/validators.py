@@ -1,5 +1,32 @@
 import ipaddress
 import re
+from urllib.parse import urlparse
+
+
+DOMAIN_PATTERN = re.compile(
+    r"^(?=.{1,253}$)"
+    r"(?!-)[A-Za-z0-9-]{1,63}(?<!-)"
+    r"(\.(?!-)[A-Za-z0-9-]{1,63}(?<!-))+$"
+)
+
+
+def refang_ioc(value: str) -> str:
+    text = value.strip()
+
+    replacements = {
+        "hxxps://": "https://",
+        "hxxp://": "http://",
+        "[.]": ".",
+        "(.)": ".",
+        "{.}": ".",
+        "[:]" : ":",
+        "[/]" : "/",
+    }
+
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+
+    return text.strip()
 
 
 def validate_public_ip(ip_text: str) -> tuple[bool, str, str]:
@@ -33,6 +60,50 @@ def validate_hash(hash_text: str) -> tuple[bool, str, str]:
             return True, normalized_hash, hash_type
 
     return False, normalized_hash, "Format hash tidak valid. Gunakan MD5, SHA1, atau SHA256."
+
+
+def validate_domain(domain_text: str) -> tuple[bool, str, str]:
+    normalized = refang_ioc(domain_text).lower()
+
+    if not normalized:
+        return False, "", "Domain kosong."
+
+    if "://" in normalized:
+        parsed = urlparse(normalized)
+        normalized = parsed.hostname or ""
+
+    normalized = normalized.strip().strip(".")
+
+    if "/" in normalized or " " in normalized:
+        return False, normalized, "Format domain tidak valid. Gunakan domain tanpa path."
+
+    if not DOMAIN_PATTERN.fullmatch(normalized):
+        return False, normalized, "Format domain tidak valid."
+
+    return True, normalized, ""
+
+
+def validate_url(url_text: str) -> tuple[bool, str, str]:
+    normalized = refang_ioc(url_text)
+
+    if not normalized:
+        return False, "", "URL kosong."
+
+    parsed = urlparse(normalized)
+
+    if parsed.scheme not in ["http", "https"]:
+        return False, normalized, "URL harus diawali dengan http:// atau https://."
+
+    if not parsed.netloc:
+        return False, normalized, "URL tidak memiliki hostname/domain."
+
+    hostname = parsed.hostname or ""
+    is_valid_domain, _, domain_error = validate_domain(hostname)
+
+    if not is_valid_domain:
+        return False, normalized, f"Hostname URL tidak valid: {domain_error}"
+
+    return True, normalized, ""
 
 
 def parse_bulk_ips(raw_text: str) -> tuple[list[dict], int]:
