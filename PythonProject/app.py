@@ -1,14 +1,11 @@
-from datetime import datetime
-
-import altair as alt
 import pandas as pd
 import streamlit as st
 
 from core.api import check_hash_virustotal, check_ip_abuseipdb
 from core.config import APP_CONFIG, load_api_keys
-from core.report import create_pdf_report
+from core.dashboard import render_bulk_tab
 from core.risk import get_category, get_recommendation, get_severity
-from core.validators import parse_bulk_ips, validate_hash, validate_public_ip
+from core.validators import validate_hash, validate_public_ip
 
 
 st.set_page_config(
@@ -21,283 +18,52 @@ st.set_page_config(
 ABUSEIPDB_API_KEY, VIRUSTOTAL_API_KEY = load_api_keys()
 
 
-# =========================
-# DATA BUILDERS
-# =========================
-
-def build_success_row(ip_address: str, data: dict) -> dict:
-    score = int(data.get("abuseConfidenceScore", 0) or 0)
-    reports = int(data.get("totalReports", 0) or 0)
-
-    category = get_category(score)
-    severity = get_severity(score, reports)
-
-    return {
-        "Scan Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "IOC Type": "IP Address",
-        "IP": ip_address,
-        "Risk Score": score,
-        "Category": category,
-        "Severity": severity,
-        "Reports": reports,
-        "Country": data.get("countryCode", "-"),
-        "ISP": data.get("isp", "-"),
-        "Recommended Action": get_recommendation(category),
-        "Error": "",
-    }
-
-
-def build_invalid_row(ip_address: str, error_message: str) -> dict:
-    return {
-        "Scan Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "IOC Type": "IP Address",
-        "IP": ip_address,
-        "Risk Score": "-",
-        "Category": "Invalid",
-        "Severity": "-",
-        "Reports": 0,
-        "Country": "-",
-        "ISP": "-",
-        "Recommended Action": get_recommendation("Invalid"),
-        "Error": error_message,
-    }
-
-
-def build_error_row(ip_address: str, error_message: str) -> dict:
-    return {
-        "Scan Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "IOC Type": "IP Address",
-        "IP": ip_address,
-        "Risk Score": "-",
-        "Category": "Error",
-        "Severity": "-",
-        "Reports": 0,
-        "Country": "-",
-        "ISP": "-",
-        "Recommended Action": get_recommendation("Error"),
-        "Error": error_message,
-    }
-
-
-# =========================
-# STYLING
-# =========================
-
-def style_category(value: str) -> str:
-    colors = {
-        "Malicious": "background-color: #ef4444; color: black",
-        "Suspicious": "background-color: #facc15; color: black",
-        "Clean": "background-color: #22c55e; color: black",
-        "Invalid": "background-color: #9ca3af; color: black",
-        "Error": "background-color: #6b7280; color: white",
-    }
-
-    return colors.get(value, "")
-
-
-# =========================
-# CHARTS
-# =========================
-
-def render_risk_distribution_chart(df: pd.DataFrame) -> None:
-    st.caption("Risk Distribution")
-
-    risk_order = [
-        "Malicious",
-        "Suspicious",
-        "Clean",
-        "Invalid",
-        "Error",
-    ]
-
-    category_counts = (
-        df["Category"]
-        .fillna("Unknown")
-        .value_counts()
-        .reindex(risk_order, fill_value=0)
-        .reset_index()
-    )
-
-    category_counts.columns = ["Category", "Count"]
-    category_counts = category_counts[category_counts["Count"] > 0]
-
-    if category_counts.empty:
-        st.info("Tidak ada risk data.")
-        return
-
-    chart = (
-        alt.Chart(category_counts)
-        .mark_bar(
-            cornerRadiusTopLeft=6,
-            cornerRadiusTopRight=6,
-        )
-        .encode(
-            x=alt.X(
-                "Category:N",
-                sort=risk_order,
-                title=None,
-                axis=alt.Axis(
-                    labelAngle=0,
-                    labelColor="#d1d5db",
-                    titleColor="#d1d5db",
-                ),
-            ),
-            y=alt.Y(
-                "Count:Q",
-                title="Count",
-                axis=alt.Axis(
-                    labelColor="#d1d5db",
-                    titleColor="#d1d5db",
-                    gridColor="#374151",
-                ),
-            ),
-            color=alt.Color(
-                "Category:N",
-                scale=alt.Scale(
-                    domain=[
-                        "Malicious",
-                        "Suspicious",
-                        "Clean",
-                        "Invalid",
-                        "Error",
-                    ],
-                    range=[
-                        "#ef4444",
-                        "#facc15",
-                        "#22c55e",
-                        "#9ca3af",
-                        "#6b7280",
-                    ],
-                ),
-                legend=None,
-            ),
-            tooltip=[
-                alt.Tooltip("Category:N", title="Category"),
-                alt.Tooltip("Count:Q", title="Count"),
-            ],
-        )
-        .properties(
-            height=340,
-            background="transparent",
-        )
-        .configure_view(
-            strokeWidth=0,
-        )
-        .configure_axis(
-            domainColor="#4b5563",
-            tickColor="#4b5563",
-            labelFontSize=12,
-            titleFontSize=12,
-        )
-    )
-
-    st.altair_chart(chart, use_container_width=True, theme=None)
-
-
-def render_country_origin_chart(df: pd.DataFrame) -> None:
-    st.caption("Country Origin")
-
-    country_series = (
-        df["Country"]
-        .fillna("-")
-        .astype(str)
-        .str.strip()
-    )
-
-    country_counts = (
-        country_series[~country_series.isin(["-", "", "None", "nan"])]
-        .value_counts()
-        .head(10)
-        .reset_index()
-    )
-
-    country_counts.columns = ["Country", "Count"]
-
-    if country_counts.empty:
-        st.info("Tidak ada country data.")
-        return
-
-    chart = (
-        alt.Chart(country_counts)
-        .mark_bar(
-            cornerRadiusTopRight=6,
-            cornerRadiusBottomRight=6,
-        )
-        .encode(
-            y=alt.Y(
-                "Country:N",
-                sort="-x",
-                title=None,
-                axis=alt.Axis(
-                    labelColor="#d1d5db",
-                    titleColor="#d1d5db",
-                ),
-            ),
-            x=alt.X(
-                "Count:Q",
-                title="Count",
-                axis=alt.Axis(
-                    labelColor="#d1d5db",
-                    titleColor="#d1d5db",
-                    gridColor="#374151",
-                ),
-            ),
-            color=alt.Color(
-                "Count:Q",
-                scale=alt.Scale(
-                    range=[
-                        "#38bdf8",
-                        "#2563eb",
-                    ],
-                ),
-                legend=None,
-            ),
-            tooltip=[
-                alt.Tooltip("Country:N", title="Country"),
-                alt.Tooltip("Count:Q", title="Count"),
-            ],
-        )
-        .properties(
-            height=340,
-            background="transparent",
-        )
-        .configure_view(
-            strokeWidth=0,
-        )
-        .configure_axis(
-            domainColor="#4b5563",
-            tickColor="#4b5563",
-            labelFontSize=12,
-            titleFontSize=12,
-        )
-    )
-
-    st.altair_chart(chart, use_container_width=True, theme=None)
-
-
-# =========================
-# SIDEBAR
-# =========================
-
-def render_sidebar() -> None:
+def render_sidebar() -> dict:
     with st.sidebar:
         st.header("Settings")
+
         st.caption(f"Cache TTL: {APP_CONFIG['cache_ttl'] // 60} minutes")
         st.caption(f"Request Timeout: {APP_CONFIG['request_timeout']} seconds")
         st.caption(f"Bulk Limit: {APP_CONFIG['max_bulk_ips']} public IPs/run")
 
         st.divider()
+        st.header("Risk Thresholds")
 
+        malicious_threshold = st.slider(
+            "Malicious Threshold",
+            min_value=1,
+            max_value=100,
+            value=50,
+            step=1,
+        )
+
+        high_severity_threshold = st.slider(
+            "High Severity Threshold",
+            min_value=1,
+            max_value=100,
+            value=75,
+            step=1,
+        )
+
+        st.divider()
         st.header("API Providers")
         st.write("- AbuseIPDB")
         st.write("- VirusTotal")
 
+    return {
+        "malicious_threshold": malicious_threshold,
+        "high_severity_threshold": high_severity_threshold,
+    }
 
-# =========================
-# SINGLE IP TAB
-# =========================
 
-def render_single_ip_tab() -> None:
+def render_confidence_note() -> None:
+    st.caption(
+        "Note: External reputation data should be validated with internal telemetry "
+        "before containment, blocking, or escalation decisions."
+    )
+
+
+def render_single_ip_tab(thresholds: dict) -> None:
     st.header("Single IP Investigation")
 
     ip_input = st.text_input(
@@ -305,7 +71,7 @@ def render_single_ip_tab() -> None:
         placeholder="Example: 8.8.8.8",
     )
 
-    if not st.button("Scan IP", use_container_width=True):
+    if not st.button("Scan IP", use_container_width=True, key="scan_single_ip"):
         return
 
     is_valid, normalized_ip, error_message = validate_public_ip(ip_input)
@@ -329,8 +95,16 @@ def render_single_ip_tab() -> None:
     score = int(data.get("abuseConfidenceScore", 0) or 0)
     reports = int(data.get("totalReports", 0) or 0)
 
-    category = get_category(score)
-    severity = get_severity(score, reports)
+    category = get_category(
+        score=score,
+        malicious_threshold=thresholds["malicious_threshold"],
+    )
+
+    severity = get_severity(
+        score=score,
+        reports=reports,
+        high_severity_threshold=thresholds["high_severity_threshold"],
+    )
 
     if category == "Malicious":
         st.error(f"🚨 MALICIOUS | Score: {score}% | Severity: {severity}")
@@ -349,13 +123,11 @@ def render_single_ip_tab() -> None:
     st.subheader("Recommended Action")
     st.info(get_recommendation(category))
 
+    render_confidence_note()
+
     with st.expander("Raw AbuseIPDB Response"):
         st.json(data)
 
-
-# =========================
-# SINGLE HASH TAB
-# =========================
 
 def render_single_hash_tab() -> None:
     st.header("Malware Hash Check")
@@ -365,7 +137,7 @@ def render_single_hash_tab() -> None:
         placeholder="MD5 / SHA1 / SHA256",
     )
 
-    if not st.button("Scan Hash", use_container_width=True):
+    if not st.button("Scan Hash", use_container_width=True, key="scan_single_hash"):
         return
 
     is_valid, normalized_hash, hash_type = validate_hash(hash_input)
@@ -412,6 +184,8 @@ def render_single_hash_tab() -> None:
     col4.metric("Harmless", harmless)
     col5.metric("Undetected", undetected)
 
+    render_confidence_note()
+
     with st.expander("VirusTotal Analysis Stats"):
         st.json(stats)
 
@@ -419,194 +193,11 @@ def render_single_hash_tab() -> None:
         st.json(data)
 
 
-# =========================
-# BULK REPORTING TAB
-# =========================
-
-def render_bulk_tab() -> None:
-    st.header("Bulk IP Analyzer & Reporting")
-
-    bulk_input = st.text_area(
-        "Input IP List",
-        height=260,
-        placeholder="One public IP per line\n8.8.8.8\n1.1.1.1",
-    )
-
-    if not st.button("Analyze & Generate Report", use_container_width=True):
-        return
-
-    targets, duplicate_count = parse_bulk_ips(bulk_input)
-
-    if not targets:
-        st.warning("List IP kosong.")
-        return
-
-    valid_count = sum(1 for item in targets if item["valid"])
-
-    if valid_count > APP_CONFIG["max_bulk_ips"]:
-        st.error(
-            f"Terlalu banyak public IP valid. "
-            f"Maksimal {APP_CONFIG['max_bulk_ips']} IP per bulk scan."
-        )
-        return
-
-    if duplicate_count:
-        st.info(f"{duplicate_count} duplicate IP dilewati.")
-
-    results = []
-    progress = st.progress(0)
-    status = st.empty()
-
-    for index, target in enumerate(targets):
-        ip_address = target["ip"]
-
-        if not target["valid"]:
-            results.append(
-                build_invalid_row(
-                    ip_address=ip_address,
-                    error_message=target["error"],
-                )
-            )
-
-            progress.progress((index + 1) / len(targets))
-            continue
-
-        status.write(f"Scanning {index + 1}/{len(targets)}: `{ip_address}`")
-
-        result = check_ip_abuseipdb(
-            ip_address=ip_address,
-            api_key=ABUSEIPDB_API_KEY,
-        )
-
-        if result["ok"]:
-            results.append(
-                build_success_row(
-                    ip_address=ip_address,
-                    data=result["data"],
-                )
-            )
-        else:
-            results.append(
-                build_error_row(
-                    ip_address=ip_address,
-                    error_message=result["error"],
-                )
-            )
-
-        progress.progress((index + 1) / len(targets))
-
-    status.empty()
-    progress.empty()
-
-    df = pd.DataFrame(results)
-
-    malicious_count = len(df[df["Category"] == "Malicious"])
-    suspicious_count = len(df[df["Category"] == "Suspicious"])
-    clean_count = len(df[df["Category"] == "Clean"])
-    error_count = len(df[df["Category"].isin(["Invalid", "Error"])])
-
-    st.divider()
-
-    col1, col2, col3, col4, col5 = st.columns(5)
-
-    col1.metric("Total Items", len(df))
-    col2.metric("Malicious", malicious_count)
-    col3.metric("Suspicious", suspicious_count)
-    col4.metric("Clean", clean_count)
-    col5.metric("Invalid/Error", error_count)
-
-    st.divider()
-
-    chart1, chart2 = st.columns(2)
-
-    with chart1:
-        render_risk_distribution_chart(df)
-
-    with chart2:
-        render_country_origin_chart(df)
-
-    st.subheader("Investigation Log")
-
-    try:
-        styled_df = df.style.applymap(
-            style_category,
-            subset=["Category"],
-        )
-
-        st.dataframe(
-            styled_df,
-            use_container_width=True,
-        )
-
-    except Exception:
-        st.dataframe(
-            df,
-            use_container_width=True,
-        )
-
-    malicious_ips = df[df["Category"] == "Malicious"]["IP"].tolist()
-
-    if malicious_ips:
-        st.subheader("Blocklist Candidate")
-        st.caption("Review kembali dengan internal telemetry sebelum blocking production.")
-        st.code("\n".join(malicious_ips), language="text")
-
-    error_df = df[df["Category"].isin(["Invalid", "Error"])]
-
-    if not error_df.empty:
-        with st.expander("Invalid/Error Details"):
-            st.dataframe(
-                error_df[["IP", "Category", "Error"]],
-                use_container_width=True,
-            )
-
-    st.divider()
-    st.subheader("Export Report")
-
-    export_csv, export_pdf = st.columns(2)
-
-    with export_csv:
-        csv_data = df.to_csv(index=False).encode("utf-8")
-
-        st.download_button(
-            label="Download CSV",
-            data=csv_data,
-            file_name="soc_scan_results.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
-
-    with export_pdf:
-        try:
-            pdf_data = create_pdf_report(
-                df=df,
-                malicious_count=malicious_count,
-                suspicious_count=suspicious_count,
-                clean_count=clean_count,
-                error_count=error_count,
-            )
-
-            st.download_button(
-                label="Download PDF Report",
-                data=pdf_data,
-                file_name="SOC_Incident_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-
-        except Exception as error:
-            st.error(f"Gagal membuat PDF: {error}")
-
-
-# =========================
-# MAIN
-# =========================
-
 def main() -> None:
     st.title("🛡️ SOC Analyst Toolkit")
     st.markdown("Incident Response Dashboard for IOC Reputation, Bulk Analysis, and Reporting")
 
-    render_sidebar()
+    thresholds = render_sidebar()
 
     tab_ip, tab_hash, tab_bulk = st.tabs(
         [
@@ -617,13 +208,16 @@ def main() -> None:
     )
 
     with tab_ip:
-        render_single_ip_tab()
+        render_single_ip_tab(thresholds)
 
     with tab_hash:
         render_single_hash_tab()
 
     with tab_bulk:
-        render_bulk_tab()
+        render_bulk_tab(
+            api_key=ABUSEIPDB_API_KEY,
+            thresholds=thresholds,
+        )
 
 
 if __name__ == "__main__":
