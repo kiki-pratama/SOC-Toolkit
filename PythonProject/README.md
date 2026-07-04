@@ -1,4 +1,4 @@
-# 🛡️ SOC Analyst Toolkit (v1.0 Pro)
+# 🛡️ SOC Analyst Toolkit (v2.0 Pro)
 
 **Internal Tool for Incident Response & Threat Hunting** *Developed by: SOC L2*
 
