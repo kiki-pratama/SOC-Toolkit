@@ -1,9 +1,14 @@
-import pandas as pd
 import streamlit as st
 
-from core.api import check_hash_virustotal, check_ip_abuseipdb
+from core.api import (
+    check_abuseipdb_api_status,
+    check_hash_virustotal,
+    check_ip_abuseipdb,
+    check_virustotal_api_status,
+)
 from core.config import APP_CONFIG, load_api_keys
 from core.dashboard import render_bulk_tab
+from core.ioc_scanners import render_domain_tab, render_url_tab
 from core.risk import get_category, get_recommendation, get_severity
 from core.validators import validate_hash, validate_public_ip
 
@@ -18,6 +23,34 @@ st.set_page_config(
 ABUSEIPDB_API_KEY, VIRUSTOTAL_API_KEY = load_api_keys()
 
 
+def render_confidence_note() -> None:
+    st.caption(
+        "Note: External reputation data should be validated with internal telemetry "
+        "before containment, blocking, or escalation decisions."
+    )
+
+
+def render_api_status() -> None:
+    st.header("API Status")
+
+    abuse_status = check_abuseipdb_api_status(ABUSEIPDB_API_KEY)
+    vt_status = check_virustotal_api_status(VIRUSTOTAL_API_KEY)
+
+    if abuse_status["ok"]:
+        st.success("AbuseIPDB: Connected")
+    else:
+        st.error(f"AbuseIPDB: {abuse_status['message']}")
+
+    if vt_status["ok"]:
+        st.success("VirusTotal: Connected")
+    else:
+        st.error(f"VirusTotal: {vt_status['message']}")
+
+    with st.expander("API Status Details"):
+        st.caption(f"AbuseIPDB: {abuse_status['message']}")
+        st.caption(f"VirusTotal: {vt_status['message']}")
+
+
 def render_sidebar() -> dict:
     with st.sidebar:
         st.header("Settings")
@@ -27,6 +60,11 @@ def render_sidebar() -> dict:
         st.caption(f"Bulk Limit: {APP_CONFIG['max_bulk_ips']} public IPs/run")
 
         st.divider()
+
+        render_api_status()
+
+        st.divider()
+
         st.header("Risk Thresholds")
 
         malicious_threshold = st.slider(
@@ -35,6 +73,7 @@ def render_sidebar() -> dict:
             max_value=100,
             value=50,
             step=1,
+            help="AbuseIPDB score di atas atau sama dengan nilai ini akan dikategorikan Malicious.",
         )
 
         high_severity_threshold = st.slider(
@@ -43,9 +82,11 @@ def render_sidebar() -> dict:
             max_value=100,
             value=75,
             step=1,
+            help="Risk score di atas atau sama dengan nilai ini akan dikategorikan High severity.",
         )
 
         st.divider()
+
         st.header("API Providers")
         st.write("- AbuseIPDB")
         st.write("- VirusTotal")
@@ -54,13 +95,6 @@ def render_sidebar() -> dict:
         "malicious_threshold": malicious_threshold,
         "high_severity_threshold": high_severity_threshold,
     }
-
-
-def render_confidence_note() -> None:
-    st.caption(
-        "Note: External reputation data should be validated with internal telemetry "
-        "before containment, blocking, or escalation decisions."
-    )
 
 
 def render_single_ip_tab(thresholds: dict) -> None:
@@ -199,10 +233,12 @@ def main() -> None:
 
     thresholds = render_sidebar()
 
-    tab_ip, tab_hash, tab_bulk = st.tabs(
+    tab_ip, tab_hash, tab_domain, tab_url, tab_bulk = st.tabs(
         [
             "🌐 Single IP",
             "🦠 Single Hash",
+            "🌍 Domain Scanner",
+            "🔗 URL Scanner",
             "📊 Bulk Reporting",
         ]
     )
@@ -212,6 +248,12 @@ def main() -> None:
 
     with tab_hash:
         render_single_hash_tab()
+
+    with tab_domain:
+        render_domain_tab(api_key=VIRUSTOTAL_API_KEY)
+
+    with tab_url:
+        render_url_tab(api_key=VIRUSTOTAL_API_KEY)
 
     with tab_bulk:
         render_bulk_tab(
