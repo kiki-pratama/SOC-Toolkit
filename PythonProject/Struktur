@@ -1,0 +1,12 @@
+soc-toolkit/
+├── app.py
+├── requirements.txt
+├── core/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── config.py
+│   ├── report.py
+│   ├── risk.py
+│   └── validators.py
+└── .streamlit/
+    └── secrets.toml
